@@ -67,11 +67,11 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     let options = {
-      cwd: dirname(document.uri.fsPath)
+      cwd: currentWorkspace.uri.fsPath
     };
 
     // Support for spawn at virtual filesystems
-    if (document.uri.scheme != "file") {
+    if (currentWorkspace.uri.scheme != "file") {
       options.cwd = ".";
     }
 
