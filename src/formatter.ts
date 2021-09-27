@@ -51,6 +51,16 @@ function createWorker(workspace: vscode.WorkspaceFolder) {
   };
 }
 
+function isFormatEnabled(workspace: vscode.WorkspaceFolder): boolean {
+  let config = vscode.workspace.getConfiguration('perltidy-more');
+  if (config.get('autoDisable', false)) {
+    if (!existsSync(join(workspace.uri.path, '.perltidyrc'))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export class Formatter {
   constructor() {}
   /**
@@ -73,12 +83,7 @@ export class Formatter {
       throw new FormatError('Format failed. File must be belong to one workspace at least.');
     }
 
-    let config = vscode.workspace.getConfiguration('perltidy-more');
-    if (config.get('autoDisable', false)) {
-      if (!existsSync(join(currentWorkspace.uri.path, '.perltidyrc'))) {
-        return Promise.resolve(undefined);
-      }
-    }
+    if (!isFormatEnabled(currentWorkspace)) return Promise.resolve(undefined);
 
     const { worker, executable } = createWorker(currentWorkspace);
 
