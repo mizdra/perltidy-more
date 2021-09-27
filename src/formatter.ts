@@ -4,7 +4,7 @@ import { isAbsolute, join } from 'path';
 import * as vscode from 'vscode';
 import { FormatError, isErrnoException } from './error';
 
-function createWorker(currentWorkspace: vscode.WorkspaceFolder) {
+function createWorker(workspace: vscode.WorkspaceFolder) {
   let config = vscode.workspace.getConfiguration('perltidy-more');
 
   var executable = config.get('executable', '');
@@ -24,17 +24,17 @@ function createWorker(currentWorkspace: vscode.WorkspaceFolder) {
   }
 
   let options = {
-    cwd: currentWorkspace.uri.fsPath
+    cwd: workspace.uri.fsPath
   };
 
   // Support for spawn at virtual filesystems
-  if (currentWorkspace.uri.scheme != "file") {
+  if (workspace.uri.scheme != "file") {
     options.cwd = ".";
   }
 
   // Support for executing relative path script from the current workspace. eg: ./script/perltidy-wrapper.pl
   if (!isAbsolute(executable)) {
-    let resolved = join(currentWorkspace.uri.path, executable)
+    let resolved = join(workspace.uri.path, executable)
 
     if (existsSync(resolved)) {
       executable = resolved;
@@ -42,7 +42,7 @@ function createWorker(currentWorkspace: vscode.WorkspaceFolder) {
       // Also we change cwd to support for local .perltidyrc in case of run it
       // in docker image (may be cwd will be set to workspace folder for all
       // cases)
-      options.cwd = currentWorkspace.uri.path;
+      options.cwd = workspace.uri.path;
     }
   }
   return {
