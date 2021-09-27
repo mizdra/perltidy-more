@@ -98,6 +98,7 @@ export class Formatter {
    * @throws {unknown} Throw an error an unexpected problem has occurred.
    */
   async format (document: vscode.TextDocument, range: vscode.Range): Promise<string | undefined> {
+    console.time('format');
     let text = document.getText(range);
     if (!text || text.length === 0) return new Promise((resolve) => { resolve('') });
 
@@ -119,6 +120,7 @@ export class Formatter {
         worker.on('error', (e) => {
           this.workerCacheMap.delete(currentWorkspace!);
           this.standBy(currentWorkspace!);
+          console.timeEnd('format');
           // When the process fails to start, terminate, or send a message to the process
           // ref: https://nodejs.org/api/child_process.html#child_process_event_error
           if (isErrnoException(e) && e.code === 'ENOENT') {
@@ -142,6 +144,7 @@ export class Formatter {
         worker.on('close', (code) => {
           this.workerCacheMap.delete(currentWorkspace!);
           this.standBy(currentWorkspace!);
+          console.timeEnd('format');
           if (code !== 0) {
             // ref: http://perltidy.sourceforge.net/perltidy.html#ERROR-HANDLING
             if (error_text === '') {
@@ -157,6 +160,7 @@ export class Formatter {
       catch (error) {
         this.workerCacheMap.delete(currentWorkspace!);
         this.standBy(currentWorkspace!);
+        console.timeEnd('format');
         // internal error
         reject(error);
       }
