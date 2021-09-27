@@ -1,7 +1,7 @@
 'use strict';
 
 import * as vscode from 'vscode';
-import { spawn } from 'child_process';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { dirname, join, isAbsolute } from 'path';
 import { existsSync } from 'fs';
 import { FormatError, handleTidyError, isErrnoException } from './error';
@@ -22,36 +22,11 @@ export function activate(context: vscode.ExtensionContext) {
     return range;
   }
 
-  /**
-   * format text by perltidy.
-   * @param document Documents containing text 
-   * @param range Range of text
-   * @returns Returns the formatted text. However, Returns `undefined` if formatting is skipped.
-   * @throws {import('./error').FormatError} Throw an error if failed to format.
-   * @throws {unknown} Throw an error an unexpected problem has occurred.
-   */
-  function tidy(document: vscode.TextDocument, range: vscode.Range): Promise<string | undefined> {
-    let text = document.getText(range);
-    if (!text || text.length === 0) return new Promise((resolve) => { resolve('') });
-
+  function createWorker(currentWorkspace: vscode.WorkspaceFolder) {
     let config = vscode.workspace.getConfiguration('perltidy-more');
 
     var executable = config.get('executable', '');
     let profile = config.get('profile', '');
-
-    const currentWorkspace = vscode.workspace.getWorkspaceFolder(
-      document.uri
-    )
-
-    if (currentWorkspace === undefined) {
-      throw new FormatError('Format failed. File must be belong to one workspace at least.');
-    }
-
-    if (config.get('autoDisable', false)) {
-      if (!existsSync(join(currentWorkspace.uri.path, '.perltidyrc'))) {
-        return Promise.resolve(undefined);
-      }
-    }
 
     let args: string[] = [
       "--standard-output",
@@ -88,10 +63,43 @@ export function activate(context: vscode.ExtensionContext) {
         options.cwd = currentWorkspace.uri.path;
       }
     }
+    return {
+      worker: spawn(executable, args, options),
+      executable,
+    };
+  }
+
+  /**
+   * format text by perltidy.
+   * @param document Documents containing text 
+   * @param range Range of text
+   * @returns Returns the formatted text. However, Returns `undefined` if formatting is skipped.
+   * @throws {import('./error').FormatError} Throw an error if failed to format.
+   * @throws {unknown} Throw an error an unexpected problem has occurred.
+   */
+  function tidy(document: vscode.TextDocument, range: vscode.Range): Promise<string | undefined> {
+    let text = document.getText(range);
+    if (!text || text.length === 0) return new Promise((resolve) => { resolve('') });
+
+    const currentWorkspace = vscode.workspace.getWorkspaceFolder(
+      document.uri
+    )
+
+    if (currentWorkspace === undefined) {
+      throw new FormatError('Format failed. File must be belong to one workspace at least.');
+    }
+
+    let config = vscode.workspace.getConfiguration('perltidy-more');
+    if (config.get('autoDisable', false)) {
+      if (!existsSync(join(currentWorkspace.uri.path, '.perltidyrc'))) {
+        return Promise.resolve(undefined);
+      }
+    }
+
+    const { worker, executable } = createWorker(currentWorkspace);
 
     return new Promise((resolve, reject) => {
       try {
-        let worker = spawn(executable, args, options);
 
         worker.stdin.write(text);
         worker.stdin.end();
