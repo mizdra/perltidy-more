@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { isAbsolute, join } from 'path';
 import * as vscode from 'vscode';
@@ -62,7 +62,33 @@ function isFormatEnabled(workspace: vscode.WorkspaceFolder): boolean {
 }
 
 export class Formatter {
-  constructor() {}
+  workerCacheMap: Map<vscode.WorkspaceFolder, { worker: ChildProcessWithoutNullStreams, executable: string }>;
+  
+  constructor() {
+    this.workerCacheMap = new Map();
+  }
+
+  /**
+   * Start the perltidy process and keep it waiting.
+   * @param workspace Workspace containing the open file.
+   * @returns Returns a worker wrapping the perltidy process and path of the executable file.
+   */
+  async standBy (workspace: vscode.WorkspaceFolder | undefined) {
+    if (workspace === undefined) throw new FormatError('Format failed. File must be belong to one workspace at least.');
+    if (!isFormatEnabled(workspace)) throw new FormatError('Format failed. File must be belong to one workspace at least.');
+
+    const result = this.workerCacheMap.get(workspace);
+    if (result) {
+      // If the process is already in standby, return it.
+      return result;
+    } else {
+      // If the process is not yet in standby, create process
+      const result = createWorker(workspace);
+      this.workerCacheMap.set(workspace, result);
+      return result;
+    }
+  }
+
   /**
    * format text by perltidy.
    * @param document Documents containing text 
@@ -77,15 +103,9 @@ export class Formatter {
 
     const currentWorkspace = vscode.workspace.getWorkspaceFolder(
       document.uri
-    )
+    );
 
-    if (currentWorkspace === undefined) {
-      throw new FormatError('Format failed. File must be belong to one workspace at least.');
-    }
-
-    if (!isFormatEnabled(currentWorkspace)) return Promise.resolve(undefined);
-
-    const { worker, executable } = createWorker(currentWorkspace);
+    const { worker, executable } = await this.standBy(currentWorkspace);
 
     return new Promise((resolve, reject) => {
       try {
@@ -97,6 +117,8 @@ export class Formatter {
         let error_text = '';
 
         worker.on('error', (e) => {
+          this.workerCacheMap.delete(currentWorkspace!);
+          this.standBy(currentWorkspace!);
           // When the process fails to start, terminate, or send a message to the process
           // ref: https://nodejs.org/api/child_process.html#child_process_event_error
           if (isErrnoException(e) && e.code === 'ENOENT') {
@@ -118,6 +140,8 @@ export class Formatter {
         });
 
         worker.on('close', (code) => {
+          this.workerCacheMap.delete(currentWorkspace!);
+          this.standBy(currentWorkspace!);
           if (code !== 0) {
             // ref: http://perltidy.sourceforge.net/perltidy.html#ERROR-HANDLING
             if (error_text === '') {
@@ -131,6 +155,8 @@ export class Formatter {
         });
       }
       catch (error) {
+        this.workerCacheMap.delete(currentWorkspace!);
+        this.standBy(currentWorkspace!);
         // internal error
         reject(error);
       }
